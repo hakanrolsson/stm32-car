@@ -354,6 +354,34 @@ static void ReadDirectionButtons()
    Param::SetInt(Param::drivesel, drivesel);
 }
 
+static void ReadShifLever(uint32_t data[2])
+{
+   int drivesel = DIR_NONE;
+   int shiftLever = data[0] >> 8;
+
+   //Forward
+   if (shiftLever == 0x10)
+   {
+      drivesel = DIR_FORWARD;
+   }
+   //Reverse
+   else if (shiftLever == 0x40)
+   {
+      drivesel = DIR_REVERSE;
+   }
+   //Neutral or park
+   else if (shiftLever == 0x20 || shiftLever == 0x80)
+   {
+      drivesel = DIR_NEUTRAL;
+   }
+   else
+   {
+      drivesel = DIR_NONE;
+   }
+
+   Param::SetInt(Param::drivesel, drivesel);
+}
+
 static void GetDigInputs()
 {
    static int lastDrivesel = DIR_NONE;
@@ -647,7 +675,7 @@ static void Ms10Task(void)
    cur = MIN(511, cur);
    Param::SetFloat(Param::discurlim, cur);
 
-   ReadDirectionButtons();
+   //ReadDirectionButtons();
    GetDigInputs();
    ProcessThrottle();
    LimitThrottle();
@@ -691,6 +719,9 @@ static void CanCallback(uint32_t id, uint32_t data[2])
       break;
    case 0x420:
       Param::SetFloat(Param::tmpaux, (((data[0] >> 8) & 0xFF) - 100) / 2.0f);
+      break;
+   case 0x540:
+      ReadShifLever(data);
       break;
    default:
       LeafBMS::DecodeCAN(id, data, rtc_get_counter_val());
@@ -737,6 +768,7 @@ extern "C" int main(void)
    c.RegisterUserMessage(0x108);
    c.RegisterUserMessage(0x109);
    c.RegisterUserMessage(0x420);
+   c.RegisterUserMessage(0x540);
 
    can = &c;
    lin = &l;
