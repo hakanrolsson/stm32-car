@@ -199,7 +199,7 @@ static void RunChaDeMo()
 
       Param::SetInt(Param::udccdm, ChaDeMo::GetChargerOutputVoltage());
       Param::SetInt(Param::idccdm, ChaDeMo::GetChargerOutputCurrent());
-      ChaDeMo::SendMessages(can);
+      //ChaDeMo::SendMessages(can);
    }
    Param::SetInt(Param::cdmstatus, ChaDeMo::GetChargerStatus());
    if (!LeafBMS::Alive(rtc_get_counter_val()))
@@ -221,7 +221,7 @@ static void SendVAG100msMessage()
 
    uint8_t canData[8] = { (uint8_t)(0x80 | ctr), 0, 0, seq1[seqCtr], seq2[seqCtr], seq3[seqCtr], seq4[seqCtr], seq5[seqCtr] };
 
-   can->Send(0x580, (uint32_t*)canData);
+   //can->Send(0x580, (uint32_t*)canData);
    seqCtr = (seqCtr + 1) & 0x3;
    ctr = (ctr + 1) & 0xF;
 }
@@ -305,7 +305,7 @@ static void Ms100Task(void)
    Param::SetInt(Param::lasterr, ErrorMessage::GetLastError());
 
    LeafBMS::RequestNextFrame(can);
-   LeafBMS::Send100msMessages(can);
+   //LeafBMS::Send100msMessages(can);
 
    if (!LeafBMS::Alive(rtc_get_counter_val()))
    {
@@ -322,9 +322,9 @@ static void Ms100Task(void)
 
    Param::SetInt(Param::din_start, start);
 
-   if (Param::GetInt(Param::canperiod) == CAN_PERIOD_100MS)
-      can->SendAll();
-   SendVAG100msMessage();
+   //if (Param::GetInt(Param::canperiod) == CAN_PERIOD_100MS)
+      //can->SendAll();
+   //SendVAG100msMessage();
 }
 
 static void ReadDirectionButtons()
@@ -682,7 +682,7 @@ static void Ms10Task(void)
 
    ErrorMessage::SetTime(rtc_get_counter_val());
 
-   LeafBMS::Send10msMessages(can, dcdcVoltage);
+   //LeafBMS::Send10msMessages(can, dcdcVoltage);
    SetFuelGauge();
 
    uint32_t canData[2];
@@ -692,10 +692,10 @@ static void Ms10Task(void)
    canData[0] = seq2[seq1Ctr] | errlights << 8 | consumptionCounter << 16;
    canData[1] = 0x1A | cruiselight << 18 | check << 24;
 
-   can->Send(0x480, canData);
+   //can->Send(0x480, canData);
 
-   if (Param::GetInt(Param::canperiod) == CAN_PERIOD_10MS)
-      can->SendAll();
+   //if (Param::GetInt(Param::canperiod) == CAN_PERIOD_10MS)
+      //can->SendAll();
 }
 
 /** This function is called when the user changes a parameter */
@@ -712,19 +712,19 @@ static void CanCallback(uint32_t id, uint32_t data[2])
    switch (id)
    {
    case 0x108:
-      ChaDeMo::Process108Message(data);
+      //ChaDeMo::Process108Message(data);
       break;
    case 0x109:
-      ChaDeMo::Process109Message(data);
+      //ChaDeMo::Process109Message(data);
       break;
    case 0x420:
-      Param::SetFloat(Param::tmpaux, (((data[0] >> 8) & 0xFF) - 100) / 2.0f);
+      //Param::SetFloat(Param::tmpaux, (((data[0] >> 8) & 0xFF) - 100) / 2.0f);
       break;
    case 0x540:
       ReadShifLever(data);
       break;
    default:
-      LeafBMS::DecodeCAN(id, data, rtc_get_counter_val());
+      //LeafBMS::DecodeCAN(id, data, rtc_get_counter_val());
       break;
    }
 }

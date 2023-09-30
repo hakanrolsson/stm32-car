@@ -166,13 +166,13 @@ void LeafBMS::RequestNextFrame(Can* can)
       {
          bmsGrpIndex++;
          canData[0] = 0x2 | 0x21 << 8 | bmsGrp << 16 | 0xff << 24;
-         can->Send(0x79B, canData);
+         //can->Send(0x79B, canData);
       }
       else if (bmsGrpIndex < 28)
       {
          bmsGrpIndex++;
          canData[0] = 0x30 | 0x1 << 8 | 0x0 << 16 | 0xff << 24;
-         can->Send(0x79B, canData);
+         //can->Send(0x79B, canData);
       }
       else
       {
@@ -199,13 +199,13 @@ void LeafBMS::RequestNextFrame(Can* can)
       {
          bmsGrpIndex++;
          canData[0] = 0x2 | 0x21 << 8 | bmsGrp << 16 | 0xff << 24;
-         can->Send(0x79B, canData);
+         //can->Send(0x79B, canData);
       }
       else if (bmsGrpIndex < 2)
       {
          bmsGrpIndex++;
          canData[0] = 0x30 | 0x1 << 8 | 0x0 << 16 | 0xff << 24;
-         can->Send(0x79B, canData);
+         //can->Send(0x79B, canData);
       }
       else
       {
@@ -219,13 +219,13 @@ void LeafBMS::RequestNextFrame(Can* can)
       {
          bmsGrpIndex++;
          canData[0] = 0x2 | 0x21 << 8 | bmsGrp << 16 | 0xff << 24;
-         can->Send(0x79B, canData);
+         //can->Send(0x79B, canData);
       }
       else if (bmsGrpIndex < 4)
       {
          bmsGrpIndex++;
          canData[0] = 0x30 | 0x1 << 8 | 0x0 << 16 | 0xff << 24;
-         can->Send(0x79B, canData);
+         //can->Send(0x79B, canData);
       }
       else
       {
