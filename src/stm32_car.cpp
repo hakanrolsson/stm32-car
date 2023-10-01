@@ -601,6 +601,7 @@ static void Ms10Task(void)
    float power = (idc * udcbms) / 1000.0f;
    float dcdcVoltage = 0;
    int32_t consumptionIncrement = -power * 2.8f;
+   int canio = Param::GetInt(Param::canio);
 
    seq1Ctr = (seq1Ctr + 1) & 0x3;
 
@@ -688,15 +689,34 @@ static void Ms10Task(void)
    uint32_t canData[2];
 
    //Byte1 seq 2, Byte ?, Byte 7 XOR(bytes[0..6])
-   uint8_t check = seq2[seq1Ctr] ^ errlights ^ (consumptionCounter & 0xFF) ^ (consumptionCounter >> 8) ^ cruiselight ^ 0x1A;
-   canData[0] = seq2[seq1Ctr] | errlights << 8 | consumptionCounter << 16;
-   canData[1] = 0x1A | cruiselight << 18 | check << 24;
+   //uint8_t check = seq2[seq1Ctr] ^ errlights ^ (consumptionCounter & 0xFF) ^ (consumptionCounter >> 8) ^ cruiselight ^ 0x1A;
+   //canData[0] = seq2[seq1Ctr] | errlights << 8 | consumptionCounter << 16;
+   //canData[1] = 0x1A | cruiselight << 18 | check << 24;
 
    //can->Send(0x480, canData);
 
    //if (Param::GetInt(Param::canperiod) == CAN_PERIOD_10MS)
       //can->SendAll();
-}
+   canData[0] = 0;
+   canData[1] = 0;
+   typedef struct {
+    unsigned char SixBits:6;
+    unsigned char TwoBits:2;
+   } tEightBits;
+   tEightBits canrun;
+   canrun.TwoBits = 0;
+   canData[0] = 0 | canrun.TwoBits;
+   canData[1] = 0 | canrun.TwoBits << 12;
+   can->Send(0x03F, canData);
+   canrun.TwoBits = 1;
+   canData[0] = 0 | canrun.TwoBits;
+   canData[1] = 0 | canrun.TwoBits << 12;
+   can->Send(0x03F, canData);
+   canrun.TwoBits = 2;
+   canData[0] = 0 | canrun.TwoBits;
+   canData[1] = 0 | canrun.TwoBits << 12;
+   can->Send(0x03F, canData);
+   }
 
 /** This function is called when the user changes a parameter */
 void Param::Change(Param::PARAM_NUM paramNum)
