@@ -52,6 +52,7 @@ static bool chargeMode = false;
 static Can* can;
 static LinBus* lin;
 static PiController fuelGaugeController;
+int g_canrun = 0;
 
 static void ProcessCruiseControlButtons()
 {
@@ -601,7 +602,6 @@ static void Ms10Task(void)
    float power = (idc * udcbms) / 1000.0f;
    float dcdcVoltage = 0;
    int32_t consumptionIncrement = -power * 2.8f;
-   int canio = Param::GetInt(Param::canio);
 
    seq1Ctr = (seq1Ctr + 1) & 0x3;
 
@@ -697,25 +697,29 @@ static void Ms10Task(void)
 
    //if (Param::GetInt(Param::canperiod) == CAN_PERIOD_10MS)
       //can->SendAll();
-   canData[0] = 0;
-   canData[1] = 0;
    typedef struct {
     unsigned char SixBits:6;
     unsigned char TwoBits:2;
    } tEightBits;
    tEightBits canrun;
-   canrun.TwoBits = 0;
-   canData[0] = 0 | canrun.TwoBits;
-   canData[1] = 0 | canrun.TwoBits << 12;
+   tEightBits canio;
+   canio.SixBits = Param::GetInt(Param::canio);
+   canrun.TwoBits = g_canrun;
+   canData[0] = 0 | canio.SixBits << 24 | canrun.TwoBits << 30;
+   canData[1] = 0 | canrun.TwoBits << 14;
    can->Send(0x03F, canData);
-   canrun.TwoBits = 1;
-   canData[0] = 0 | canrun.TwoBits;
-   canData[1] = 0 | canrun.TwoBits << 12;
-   can->Send(0x03F, canData);
-   canrun.TwoBits = 2;
-   canData[0] = 0 | canrun.TwoBits;
-   canData[1] = 0 | canrun.TwoBits << 12;
-   can->Send(0x03F, canData);
+   //canrun.TwoBits = 1;
+   //canData[0] = 0 |canio.SixBits << 2 | canrun.TwoBits;
+   //canData[1] = 0 | canrun.TwoBits << 12;
+   //can->Send(0x03F, canData);
+   //canrun.TwoBits = 2;
+   //canData[0] = 0 | canio.SixBits << 2 | canrun.TwoBits;
+   //canData[1] = 0 | canrun.TwoBits << 12;
+   //can->Send(0x03F, canData);
+   if (g_canrun < 2)
+      g_canrun++;
+   else
+      g_canrun = 0;
    }
 
 /** This function is called when the user changes a parameter */
