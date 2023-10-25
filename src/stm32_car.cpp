@@ -383,6 +383,21 @@ static void ReadShifLever(uint32_t data[2])
    Param::SetInt(Param::drivesel, drivesel);
 }
 
+static void ReadBrakePedal(uint32_t data[2])
+{
+   int brakePedal = data[0];
+   int brake = 0;
+   if (brakePedal == 0x04)
+   {
+      brake = 1;
+   }
+   else if (brakePedal == 0x84)
+   {
+      brake = 0;
+   }
+   Param::SetInt(Param::din_brake, brake);
+}
+
 static void GetDigInputs()
 {
    static int lastDrivesel = DIR_NONE;
@@ -667,14 +682,14 @@ static void Ms10Task(void)
       DigIo::vacuum_out.Clear();
    }
 
-   float cur = 1000 * Param::GetFloat(Param::chglim) / udcbms;
-   cur *= Param::GetFloat(Param::powerslack);
+   //float cur = 1000 * Param::GetFloat(Param::chglim) / udcbms;
+   //cur *= Param::GetFloat(Param::powerslack);
    Param::SetInt(Param::vacuum, vacuum);
-   Param::SetFloat(Param::chgcurlim, cur);
-   cur = 1000 * Param::GetFloat(Param::dislim) / udcbms;
-   cur *= Param::GetFloat(Param::powerslack);
-   cur = MIN(511, cur);
-   Param::SetFloat(Param::discurlim, cur);
+   //Param::SetFloat(Param::chgcurlim, cur);
+   //cur = 1000 * Param::GetFloat(Param::dislim) / udcbms;
+   //cur *= Param::GetFloat(Param::powerslack);
+   //cur = MIN(511, cur);
+   //Param::SetFloat(Param::discurlim, cur);
 
    //ReadDirectionButtons();
    GetDigInputs();
@@ -735,6 +750,9 @@ static void CanCallback(uint32_t id, uint32_t data[2])
 {
    switch (id)
    {
+   case 0x030:
+      ReadBrakePedal(data);
+      break;
    case 0x108:
       //ChaDeMo::Process108Message(data);
       break;
@@ -748,7 +766,7 @@ static void CanCallback(uint32_t id, uint32_t data[2])
       ReadShifLever(data);
       break;
    default:
-      //LeafBMS::DecodeCAN(id, data, rtc_get_counter_val());
+      LeafBMS::DecodeCAN(id, data, rtc_get_counter_val());
       break;
    }
 }
@@ -783,8 +801,8 @@ extern "C" int main(void)
 
    c.SetNodeId(2);
    c.SetReceiveCallback(CanCallback);
-   c.RegisterUserMessage(0x7BB);
-   c.RegisterUserMessage(0x1DB);
+   //c.RegisterUserMessage(0x7BB);
+   //c.RegisterUserMessage(0x1DB);
    c.RegisterUserMessage(0x1DC);
    c.RegisterUserMessage(0x55B);
    c.RegisterUserMessage(0x5BC);
@@ -793,6 +811,9 @@ extern "C" int main(void)
    c.RegisterUserMessage(0x109);
    c.RegisterUserMessage(0x420);
    c.RegisterUserMessage(0x540);
+   c.RegisterUserMessage(0x3CB);
+   c.RegisterUserMessage(0x030);
+   
 
    can = &c;
    lin = &l;

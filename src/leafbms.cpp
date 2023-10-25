@@ -118,6 +118,14 @@ void LeafBMS::DecodeCAN(int id, uint32_t data[2], uint32_t time)
       Param::SetFixed(Param::chglim, chgLimFiltered / 4);
       lastRecv = time;
    }
+   else if (id == 0x3CB)
+   {
+      int dislimit = bytes[0];
+      int chglimit = bytes[1];
+      Param::SetInt(Param::discurlim, dislimit);
+      Param::SetInt(Param::chgcurlim, chglimit);
+      lastRecv = time;
+   }
    else if (id == 0x55B)
    {
       s32fp soc = ((bytes[0] << 8) + (bytes[1] & 0xC0)) >> 1;

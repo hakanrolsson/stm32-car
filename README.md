@@ -47,7 +47,6 @@ Send these commands:
 ~~- can tx calcthrotmin 1 50 7 -1 //this is for the inverter, configure however you want~~
 ~~- can tx calcthrotmax 1 57 7 1 //this is for the inverter, configure however you want~~
 ~~- can rx din_start 1394 3 1 32 //grabs key switch start position~~
-- can rx din_brake 48 7 1 1 //grabs brake light switch
 ~~- can rx espoff 416 9 1 32 //grabs ESP off button~~
 - can rx udcinv 3 16 16 8 //various inverter values
 - can rx tmpm 3 48 8 32
