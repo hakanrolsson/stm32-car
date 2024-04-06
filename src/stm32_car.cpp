@@ -53,6 +53,8 @@ static Can* can;
 static LinBus* lin;
 static PiController fuelGaugeController;
 int g_canrun = 0;
+bool g_shifterChanged = false;
+
 
 static void ProcessCruiseControlButtons()
 {
@@ -357,35 +359,42 @@ static void ReadDirectionButtons()
 
 static void ReadShifLever(uint32_t data[2])
 {
-   int drivesel = DIR_NONE;
-   int shiftLever = data[0] >> 8;
-
-   //Forward
-   if (shiftLever == 0x10)
-   {
-      drivesel = DIR_FORWARD;
-   }
-   //Reverse
-   else if (shiftLever == 0x40)
-   {
-      drivesel = DIR_REVERSE;
-   }
-   //Neutral or park
-   else if (shiftLever == 0x20 || shiftLever == 0x80)
-   {
-      drivesel = DIR_NEUTRAL;
-   }
-   else
-   {
-      drivesel = DIR_NONE;
-   }
-
-   Param::SetInt(Param::drivesel, drivesel);
+   uint8_t* bytes = (uint8_t*)data;
+   int drivesel = AnaIn::drivesel.Get();
+   //int shiftLever = data[0] >> 8;
+   int shiftLever = bytes[1];
+   //int pot1 = AnaIn::throttle1.Get();
+   //int pot2 = AnaIn::throttle2.Get();
+   //if (bytes[0] == 0x25) //not in change 0xA5
+   //{
+     //Forward
+     //if (shiftLever == 0x10 || pot1 > 4400) 
+     //if (shiftLever == 0x10) 
+     //{
+     //   drivesel = DIR_FORWARD;
+     //}
+     //Reverse
+     //else if (shiftLever == 0x40 || pot1 < 1200)
+     //else if (shiftLever == 0x40)
+     //{
+     //   drivesel = DIR_REVERSE;
+     //}
+     //Neutral or park
+     //else if ((shiftLever == 0x20 && (pot1 < 4400 && pot1 > 1200)) || shiftLever == 0x80)
+     //else if ((shiftLever == 0x20 || shiftLever == 0x80))
+     if (shiftLever == 0x80)
+     {
+        drivesel = DIR_NEUTRAL;
+       Param::SetInt(Param::drivesel, drivesel);
+     }
+     //Param::SetInt(Param::drivesel, drivesel);
+   //}
 }
 
 static void ReadBrakePedal(uint32_t data[2])
 {
-   int brakePedal = data[0];
+   uint8_t* bytes = (uint8_t*)data;
+   int brakePedal = bytes[0];
    int brake = 0;
    if (brakePedal == 0x04)
    {
@@ -526,6 +535,42 @@ static void ProcessThrottle()
    Param::SetInt(Param::pot, pot1);
    Param::SetInt(Param::pot2, pot2);
    Param::SetInt(Param::potbrake, brakePressure);
+}
+
+static void ProcessShifLever()
+{
+   int drivesel = AnaIn::drivesel.Get();
+   int vsx1 = AnaIn::throttle1.Get();
+   int vsx3 = AnaIn::throttle2.Get();
+   int p1 = AnaIn::vacuum.Get();
+   if (vsx3 > 2000) //not in change 0xA5
+   {
+      if (g_shifterChanged == false)
+      {
+         //Forward
+         if (vsx1 > 4000) 
+         {
+            drivesel = DIR_FORWARD;
+            g_shifterChanged = true;
+         } 
+         //Reverse
+         else if (vsx1 < 1500)
+         {
+            drivesel = DIR_REVERSE;
+            g_shifterChanged = true;
+         }
+         //Neutral
+         else
+         {
+           drivesel = DIR_NEUTRAL;
+         }
+         Param::SetInt(Param::drivesel, drivesel);
+      }
+   }
+   else
+   {
+      g_shifterChanged = false;
+   }
 }
 
 static void LimitThrottle()
@@ -695,6 +740,7 @@ static void Ms10Task(void)
    GetDigInputs();
    ProcessThrottle();
    LimitThrottle();
+   ProcessShifLever();
 
    ErrorMessage::SetTime(rtc_get_counter_val());
 
@@ -751,7 +797,7 @@ static void CanCallback(uint32_t id, uint32_t data[2])
    switch (id)
    {
    case 0x030:
-      ReadBrakePedal(data);
+      //ReadBrakePedal(data);
       break;
    case 0x108:
       //ChaDeMo::Process108Message(data);
