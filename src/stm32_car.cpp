@@ -543,12 +543,12 @@ static void ProcessShifLever()
    int vsx1 = AnaIn::throttle1.Get();
    int vsx3 = AnaIn::throttle2.Get();
    int p1 = AnaIn::vacuum.Get();
-   if (vsx3 > 2000) //not in change 0xA5
+   if (vsx3 < 2000) //not in change 0xA5
    {
       if (g_shifterChanged == false)
       {
          //Forward
-         if (vsx1 > 4000) 
+         if (vsx1 > 3350) 
          {
             drivesel = DIR_FORWARD;
             g_shifterChanged = true;
