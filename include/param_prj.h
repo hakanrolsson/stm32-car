@@ -24,7 +24,7 @@
    2. Temporary parameters (id = 0)
    3. Display values
  */
-//Next param id (increase when adding new parameter!): 110
+//Next param id (increase when adding new parameter!): 114
 /*              category     name         unit       min     max     default id */
 #define PARAM_LIST \
     PARAM_ENTRY(CAT_ESP,      allowedspin, "km/h",    0,      50,     10,     5   ) \
@@ -56,6 +56,10 @@
     PARAM_ENTRY(CAT_GAUGE,    soctest,     "%",       0,      100,    0,      0   ) \
     PARAM_ENTRY(CAT_COMM,     canspeed,    CANSPEEDS, 0,      3,      1,      83  ) \
     PARAM_ENTRY(CAT_COMM,     canperiod,   CANPERIODS,0,      1,      0,      88  ) \
+    PARAM_ENTRY(CAT_SHIFTER,  shiftertype, STEERTYPE, 0,      1,      0,      110 ) \
+    PARAM_ENTRY(CAT_SHIFTER,  vsx3thresh,  "dig",     0,      4095,   2500,   111 ) \
+    PARAM_ENTRY(CAT_SHIFTER,  vsx1fwd,     "dig",     0,      4095,   2000,   112 ) \
+    PARAM_ENTRY(CAT_SHIFTER,  vsx1rev,     "dig",     0,      4095,   3500,   113 ) \
     VALUE_ENTRY(version,      VERSTR,  2039 ) \
     VALUE_ENTRY(opmode,       OPMODES, 2086 ) \
     VALUE_ENTRY(invmode,      INVMODES,2000 ) \
@@ -147,6 +151,8 @@
 #define CAT_GAUGE    "Fuel Gauge"
 #define CAT_ESP      "ESP/ABS integration"
 #define CAT_CRUISE   "Cruise Control"
+#define CAT_SHIFTER  "Shifter"
+#define STEERTYPE    "0=VSX3ActiveHigh, 1=VSX3ActiveLow"
 
 #define CAN_PERIOD_100MS    0
 #define CAN_PERIOD_10MS     1

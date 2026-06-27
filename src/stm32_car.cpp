@@ -18,6 +18,9 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+// Required stub for bare-metal C++ pure virtual functions
+extern "C" void __cxa_pure_virtual() { while (1); }
+
 #include <stdint.h>
 #include <libopencm3/stm32/usart.h>
 #include <libopencm3/stm32/timer.h>
@@ -539,30 +542,34 @@ static void ProcessThrottle()
 
 static void ProcessShifLever()
 {
-   int drivesel = AnaIn::drivesel.Get();
+   int drivesel = Param::GetInt(Param::drivesel);
    int vsx1 = AnaIn::throttle1.Get();
    int vsx3 = AnaIn::throttle2.Get();
-   int p1 = AnaIn::vacuum.Get();
-   if (vsx3 < 2000) //not in change 0xA5
+   int thresh = Param::GetInt(Param::vsx3thresh);
+   int fwdThresh = Param::GetInt(Param::vsx1fwd);
+   int revThresh = Param::GetInt(Param::vsx1rev);
+   // shiftertype=0 (default): VSX3 HIGH = lever pushed to gear (active high)
+   // shiftertype=1: VSX3 LOW  = lever pushed to gear (active low, inverted wiring)
+   bool leverActive = (Param::GetInt(Param::shiftertype) == 0) ? (vsx3 > thresh) : (vsx3 < thresh);
+
+   if (leverActive)
    {
       if (g_shifterChanged == false)
       {
-         //Forward
-         if (vsx1 > 3350) 
-         {
-            drivesel = DIR_FORWARD;
-            g_shifterChanged = true;
-         } 
-         //Reverse
-         else if (vsx1 < 1500)
+         if (vsx1 > revThresh)
          {
             drivesel = DIR_REVERSE;
             g_shifterChanged = true;
          }
-         //Neutral
+         else if (vsx1 < fwdThresh)
+         {
+            drivesel = DIR_FORWARD;
+            g_shifterChanged = true;
+         }
          else
          {
-           drivesel = DIR_NEUTRAL;
+            drivesel = DIR_NEUTRAL;
+            // don't latch neutral — keep sampling in case signal is still settling
          }
          Param::SetInt(Param::drivesel, drivesel);
       }
