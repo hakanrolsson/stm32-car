@@ -59,7 +59,7 @@
     PARAM_ENTRY(CAT_SHIFTER,  shiftertype, STEERTYPE, 0,      1,      0,      110 ) \
     PARAM_ENTRY(CAT_SHIFTER,  vsx3thresh,  "dig",     0,      4095,   2500,   111 ) \
     PARAM_ENTRY(CAT_SHIFTER,  vsx1fwd,     "dig",     0,      4095,   2000,   112 ) \
-    PARAM_ENTRY(CAT_SHIFTER,  vsx1rev,     "dig",     0,      4095,   3500,   113 ) \
+    PARAM_ENTRY(CAT_SHIFTER,  vsx1rev,     "dig",     0,      4095,   3300,   113 ) \
     VALUE_ENTRY(version,      VERSTR,  2039 ) \
     VALUE_ENTRY(opmode,       OPMODES, 2086 ) \
     VALUE_ENTRY(invmode,      INVMODES,2000 ) \

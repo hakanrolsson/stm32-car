@@ -418,6 +418,7 @@ static void GetDigInputs()
    int speed = Param::GetInt(Param::speed);
    int cruisemode = Param::GetInt(Param::cruisestt) & CRUISE_ON;
    int canio = 0;
+   bool brakeActive = Param::GetBool(Param::din_brake) || DigIo::brake_in.Get();
 
    //Forward button
    if (drivesel == DIR_FORWARD)
@@ -427,7 +428,7 @@ static void GetDigInputs()
       {
          Param::SetInt(Param::cruisestt, cruisemode | CRUISE_SETP);
       }
-      else if (Param::GetBool(Param::din_brake) || invdir == DIR_REVERSE)
+      else if (brakeActive || invdir == DIR_REVERSE)
       {
          Param::SetInt(Param::din_reverse, 0);
          Param::SetInt(Param::din_forward, 1);
@@ -441,7 +442,7 @@ static void GetDigInputs()
       {
          Param::SetInt(Param::cruisestt, cruisemode | CRUISE_SETN);
       }
-      else if (Param::GetBool(Param::din_brake) || invdir == DIR_FORWARD)
+      else if (brakeActive || invdir == DIR_FORWARD)
       {
          Param::SetInt(Param::din_forward, 0);
          Param::SetInt(Param::din_reverse, 1);
@@ -479,8 +480,9 @@ static void GetDigInputs()
       canio |= CAN_IO_CRUISE;
    if (Param::GetBool(Param::din_start) || DigIo::start_in.Get())
       canio |= CAN_IO_START;
-   if (Param::GetBool(Param::din_brake) || DigIo::brake_in.Get())
-      canio |= CAN_IO_BRAKE;
+   // Brake bit not forwarded to stm32-sine: Prius 0x030 brake signal is
+// always-on and would permanently lock stm32-sine into regen-only mode.
+// din_brake is still used internally for the direction change condition.
    if (Param::GetBool(Param::din_forward))
       canio |= CAN_IO_FWD;
    if (Param::GetBool(Param::din_reverse))
@@ -548,13 +550,13 @@ static void ProcessShifLever()
    int thresh = Param::GetInt(Param::vsx3thresh);
    int fwdThresh = Param::GetInt(Param::vsx1fwd);
    int revThresh = Param::GetInt(Param::vsx1rev);
-   // shiftertype=0 (default): VSX3 HIGH = lever pushed to gear (active high)
-   // shiftertype=1: VSX3 LOW  = lever pushed to gear (active low, inverted wiring)
+   // shiftertype=0 (VSX3ActiveHigh): VSX3 HIGH = lever pushed (LHD, or RHD at 12V)
+   // shiftertype=1 (VSX3ActiveLow):  VSX3 LOW  = lever pushed (RHD at 14V/running)
    bool leverActive = (Param::GetInt(Param::shiftertype) == 0) ? (vsx3 > thresh) : (vsx3 < thresh);
 
    if (leverActive)
    {
-      if (g_shifterChanged == false)
+      if (!g_shifterChanged)
       {
          if (vsx1 > revThresh)
          {
@@ -804,7 +806,7 @@ static void CanCallback(uint32_t id, uint32_t data[2])
    switch (id)
    {
    case 0x030:
-      //ReadBrakePedal(data);
+      ReadBrakePedal(data);
       break;
    case 0x108:
       //ChaDeMo::Process108Message(data);
@@ -816,7 +818,7 @@ static void CanCallback(uint32_t id, uint32_t data[2])
       //Param::SetFloat(Param::tmpaux, (((data[0] >> 8) & 0xFF) - 100) / 2.0f);
       break;
    case 0x540:
-      ReadShifLever(data);
+      //ReadShifLever(data); // replaced by analog ProcessShifLever()
       break;
    default:
       LeafBMS::DecodeCAN(id, data, rtc_get_counter_val());
