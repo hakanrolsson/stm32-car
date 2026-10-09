@@ -53,6 +53,7 @@ void clock_setup(void)
    rcc_periph_clock_enable(RCC_GPIOD);
    rcc_periph_clock_enable(RCC_USART1);
    rcc_periph_clock_enable(RCC_USART3);
+   rcc_periph_clock_enable(RCC_TIM1); //PCON park-lock actuator PWM
    rcc_periph_clock_enable(RCC_TIM2); //Scheduler
    rcc_periph_clock_enable(RCC_TIM3); //Rotor Encoder
    rcc_periph_clock_enable(RCC_TIM4); //Overcurrent / AUX PWM
@@ -137,5 +138,27 @@ void tim_setup()
 
    /** setup gpio */
    gpio_set_mode(GPIOB, GPIO_MODE_OUTPUT_50_MHZ, GPIO_CNF_OUTPUT_ALTFN_PUSHPULL, GPIO7 | GPIO8);
+
+   /*** Setup PCON (park-lock actuator command) on TIM1_CH2N ***/
+   timer_disable_counter(TIM1);
+   timer_set_alignment(TIM1, TIM_CR1_CMS_EDGE);
+   timer_enable_preload(TIM1);
+   timer_set_oc_mode(TIM1, TIM_OC2, TIM_OCM_PWM1);
+   timer_enable_oc_preload(TIM1, TIM_OC2);
+   //CH2N is hardware-complementary to CH2; polarity_low here makes the CH2N pin
+   //track the same "high while CNT<CCR" sense as a normal channel
+   timer_set_oc_polarity_low(TIM1, TIM_OC2N);
+   timer_enable_oc_output(TIM1, TIM_OC2N);
+   timer_enable_oc_output(TIM1, TIM_OC2); //PA9 pin untouched (no AF set), but CC2E must
+                                           //be enabled alongside CC2NE for the complementary
+                                           //output stage to actually drive the CH2N pin
+   timer_enable_break_main_output(TIM1); //required for TIM1 (advanced timer) outputs
+   timer_set_prescaler(TIM1, PCON_PSC);
+   timer_set_period(TIM1, PCON_PERIOD);
+   timer_set_oc_value(TIM1, TIM_OC2, PCON_ENGAGE); //car powers up in park
+   timer_generate_event(TIM1, TIM_EGR_UG); //force the above into the active registers now
+   timer_enable_counter(TIM1);
+
+   gpio_set_mode(GPIOB, GPIO_MODE_OUTPUT_50_MHZ, GPIO_CNF_OUTPUT_ALTFN_PUSHPULL, GPIO14);
 }
 

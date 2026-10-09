@@ -57,6 +57,36 @@ static LinBus* lin;
 static PiController fuelGaugeController;
 int g_canrun = 0;
 bool g_shifterChanged = false;
+static float g_vehicleSpeedKmh = 0; //from SKID_ECU 0x0B4, real Toyota ABS speed - not the vestigial VAG wheelfl/wheelfr traction control path
+
+//Values of byte 1 in the 0x540 shift lever message
+enum gears
+{
+   GEAR_B = 0x00,
+   GEAR_D = 0x10,
+   GEAR_N = 0x20,
+   GEAR_R = 0x40,
+   GEAR_P = 0x80
+};
+
+//P1 park button on J2-54 (SIG_FORWARD, 3k3 series into PA4/ADC4). The switch ladder
+//(4.5k released, 0.66k pressed) goes to GND, and the adapter has a pull-up to J2-56 (+12V,
+//18k) or J2-48 (+5V, 3.3k). ADC: released ~2200-3600 (12V: depends on battery voltage),
+//pressed ~400-1030, open circuit 4095, shorted switch ~0.
+//Pressed = above P1_SHORT_MAX and below p1thresh. A short is a wiring fault, not a press.
+#define P1_SHORT_MAX      150
+#define P1_DEBOUNCE     3    //x 10ms
+#define P1_MAX_SPEED      50   //rpm, park only accepted when standing still
+#define GEAR_PERIOD       100  //x 10ms, OEM repeats 0x540 about once per second
+//No PPOS feedback yet, so approximate park-lock completion with a fixed delay instead
+//of real confirmation. Real ECU (20261005 capture): 0x540 shows byte1=0x00 while the pawl
+//moves, 0.1s fast release, 0.3s engage, 0.5s first/loaded release, then the new gear lands
+//on 0x540 and 0x120 together. BB07D7760 manifest: up to 0.6s from command to complete.
+#define PARK_LOCK_DELAY   60   //x 10ms = 0.6s
+
+static uint8_t g_gear = GEAR_P; //car powers up in park
+static uint8_t g_reportedGear = GEAR_P; //what 0x540/0x120 broadcast - lags g_gear during a P/not-P transition
+static bool g_parkTransit = false; //pawl moving: 0x540 reports byte1=0x00, 0x120 keeps the old gear
 
 
 static void ProcessCruiseControlButtons()
@@ -553,6 +583,8 @@ static void ProcessShifLever()
    // shiftertype=0 (VSX3ActiveHigh): VSX3 HIGH = lever pushed (LHD, or RHD at 12V)
    // shiftertype=1 (VSX3ActiveLow):  VSX3 LOW  = lever pushed (RHD at 14V/running)
    bool leverActive = (Param::GetInt(Param::shiftertype) == 0) ? (vsx3 > thresh) : (vsx3 < thresh);
+   // vsx1fwd/vsx1rev name the raw ADC bands, not the resulting direction - confirmed
+   // 2026-09-28 that vsx1 > vsx1rev corresponds to the D gesture and vsx1 < vsx1fwd to R
 
    if (leverActive)
    {
@@ -560,12 +592,12 @@ static void ProcessShifLever()
       {
          if (vsx1 > revThresh)
          {
-            drivesel = DIR_REVERSE;
+            drivesel = DIR_FORWARD;
             g_shifterChanged = true;
          }
          else if (vsx1 < fwdThresh)
          {
-            drivesel = DIR_FORWARD;
+            drivesel = DIR_REVERSE;
             g_shifterChanged = true;
          }
          else
@@ -574,12 +606,154 @@ static void ProcessShifLever()
             // don't latch neutral — keep sampling in case signal is still settling
          }
          Param::SetInt(Param::drivesel, drivesel);
+
+         if (drivesel == DIR_REVERSE)
+            g_gear = GEAR_R;
+         else if (drivesel == DIR_FORWARD)
+            g_gear = GEAR_D;
+         else
+            g_gear = GEAR_N;
       }
    }
    else
    {
       g_shifterChanged = false;
    }
+}
+
+static void ProcessParkButton()
+{
+   static int pressedCtr = 0;
+   static bool wasPressed = false;
+   int p1 = AnaIn::p1.Get();
+   bool pressed = p1 > P1_SHORT_MAX && p1 < Param::GetInt(Param::p1thresh);
+
+   Param::SetInt(Param::p1, p1);
+   pressedCtr = pressed ? MIN(pressedCtr + 1, P1_DEBOUNCE) : 0;
+   bool debounced = pressedCtr >= P1_DEBOUNCE;
+
+   //Act on the press only, and only when standing still
+   if (debounced && !wasPressed && ABS(Param::GetInt(Param::speed)) <= P1_MAX_SPEED)
+   {
+      g_gear = GEAR_P;
+      Param::SetInt(Param::drivesel, DIR_NEUTRAL);
+   }
+   wasPressed = debounced;
+}
+
+//Drives PCON (TIM1_CH2N) to command the park-lock actuator, and holds g_reportedGear
+//at its pre-transition value for PARK_LOCK_DELAY on any P/not-P change - approximating
+//the real HV ECU's "gate the reported gear on park-lock feedback" behaviour (BB07D7760
+//capture) without real PPOS feedback. While held, SendGearMessage() shows 0x00 on 0x540.
+//Non-park gear changes (R/N/D) report immediately.
+static void ProcessParkActuator()
+{
+   static bool lastWantPark = true; //car powers up in park
+   static int delayCtr = 0;
+   bool wantPark = g_gear == GEAR_P;
+
+   if (wantPark != lastWantPark)
+   {
+      timer_set_oc_value(TIM1, TIM_OC2, wantPark ? PCON_ENGAGE : PCON_RELEASE);
+      lastWantPark = wantPark;
+      delayCtr = PARK_LOCK_DELAY;
+      g_parkTransit = true;
+   }
+
+   if (delayCtr > 0)
+   {
+      delayCtr--;
+   }
+   else
+   {
+      g_parkTransit = false;
+      g_reportedGear = g_gear;
+   }
+}
+
+//Replaces the HV ECU's 0x540 shift lever message. Sent on change and then periodically.
+//Byte 0: 0x25 steady, 0xA5 on change. Byte 1: gear. Bytes 2-3: 0.
+//Real sequence per P/not-P change (20261005 capture): A5 00 once when the pawl starts
+//moving, A5 <gear> when it is done, 25 <gear> 1.0s later and then every 1.0s.
+static void SendGearMessage()
+{
+   static uint8_t lastGear = 0xFF;
+   static bool lastTransit = false;
+   static int ctr = 0;
+   bool changed = g_reportedGear != lastGear;
+
+   Param::SetInt(Param::gear, g_reportedGear);
+
+   if (g_parkTransit && !lastTransit)
+   {
+      uint8_t data[8] = { 0xA5, GEAR_B, 0, 0, 0, 0, 0, 0 };
+      can->Send(0x540, data, 4);
+      ctr = 0;
+   }
+   lastTransit = g_parkTransit;
+
+   if (g_parkTransit)
+      return; //stay silent until the pawl is done
+
+   if (changed || ++ctr >= GEAR_PERIOD)
+   {
+      uint8_t data[8] = { (uint8_t)(changed ? 0xA5 : 0x25), g_reportedGear, 0, 0, 0, 0, 0, 0 };
+      can->Send(0x540, data, 4);
+      lastGear = g_reportedGear;
+      ctr = 0;
+   }
+}
+
+//Replaces the HV ECU's 0x120 drive mode message (OEM 16.4 ms, we send every 16 ms from Ms16Task).
+//Byte 4: 0x10 throughout on a healthy READY car (candump-bb07d77670-...-power-on.csv), but
+//the real ECU drops it to 0x00 after ~1.7s when it never reaches READY (20261005 capture,
+//unplugged battery/engine ECU captures). Meaning unknown, so we keep sending 0x10.
+//Byte 5: gear (0x20 P, 0x21 R, 0x22 N, 0x23 D), byte 6: 0x04 powered / 0x00 standby,
+//byte 7: Toyota checksum = sum(bytes 0..6) + length + both ID bytes.
+static void SendDriveModeMessage()
+{
+   uint8_t gearCode;
+
+   switch (g_reportedGear)
+   {
+   case GEAR_P: gearCode = 0x20; break;
+   case GEAR_R: gearCode = 0x21; break;
+   case GEAR_N: gearCode = 0x22; break;
+   default:     gearCode = 0x23; break; //D and B
+   }
+
+   uint8_t data[8] = { 0, 0, 0, 0, 0x10, gearCode, 0, 0 };
+   data[6] = Param::GetInt(Param::opmode) == MOD_RUN ? 0x04 : 0x00;
+
+   uint8_t sum = 8 + 0x01 + 0x20;
+   for (int i = 0; i < 7; i++)
+      sum += data[i];
+   data[7] = sum;
+
+   can->Send(0x120, data, 8);
+}
+
+//Replaces the HV ECU's 0x3CA speed message (OEM ~100 ms). Byte 2: speed in km/h
+//(0-255, unsigned magnitude - direction comes from gear, not this message).
+//Byte 4: Toyota checksum = sum(bytes 0..3) + length + both ID bytes.
+static void SendSpeedMessage()
+{
+   static int ctr = 0;
+
+   if (++ctr < 10)
+      return;
+   ctr = 0;
+
+   uint8_t speed = (uint8_t)MIN(255, ABS(g_vehicleSpeedKmh));
+
+   uint8_t data[5] = { 0, 0, speed, 0, 0 };
+
+   uint8_t sum = 5 + 0x03 + 0xCA;
+   for (int i = 0; i < 4; i++)
+      sum += data[i];
+   data[4] = sum;
+
+   can->Send(0x3CA, data, 5);
 }
 
 static void LimitThrottle()
@@ -652,6 +826,12 @@ static void SetRevCounter()
       DigIo::oilpres_out.Set();
       Param::SetInt(Param::speedmod, 1000 + regenLevel * 1000 - Param::GetInt(Param::idc) * 10);
    }
+}
+
+//0x120 is sent by the real ECU every 16.4 ms, which the 10 ms task can't hit
+static void Ms16Task(void)
+{
+   SendDriveModeMessage();
 }
 
 static void Ms10Task(void)
@@ -750,6 +930,10 @@ static void Ms10Task(void)
    ProcessThrottle();
    LimitThrottle();
    ProcessShifLever();
+   ProcessParkButton();
+   ProcessParkActuator();
+   SendGearMessage();
+   SendSpeedMessage();
 
    ErrorMessage::SetTime(rtc_get_counter_val());
 
@@ -817,9 +1001,13 @@ static void CanCallback(uint32_t id, uint32_t data[2])
    case 0x420:
       //Param::SetFloat(Param::tmpaux, (((data[0] >> 8) & 0xFF) - 100) / 2.0f);
       break;
-   case 0x540:
-      //ReadShifLever(data); // replaced by analog ProcessShifLever()
+   case 0x0B4: //SKID_ECU VehicleSpeed_B4: byte5:6 signed, 0.009765625 km/h/count
+   {
+      uint8_t* bytes = (uint8_t*)data;
+      int16_t raw = (int16_t)((bytes[5] << 8) | bytes[6]);
+      g_vehicleSpeedKmh = raw * 0.009765625f;
       break;
+   }
    default:
       LeafBMS::DecodeCAN(id, data, rtc_get_counter_val());
       break;
@@ -865,9 +1053,9 @@ extern "C" int main(void)
    c.RegisterUserMessage(0x108);
    c.RegisterUserMessage(0x109);
    c.RegisterUserMessage(0x420);
-   c.RegisterUserMessage(0x540);
    c.RegisterUserMessage(0x3CB);
    c.RegisterUserMessage(0x030);
+   c.RegisterUserMessage(0x0B4);
    
 
    can = &c;
@@ -883,6 +1071,7 @@ extern "C" int main(void)
    fuelGaugeController.SetMinMaxY(Param::GetInt(Param::fueldcmin), Param::GetInt(Param::fueldcmax));
 
    s.AddTask(Ms10Task, 10);
+   s.AddTask(Ms16Task, 16);
    s.AddTask(Ms100Task, 100);
 
    Param::SetInt(Param::version, 4); //COM protocol version 4

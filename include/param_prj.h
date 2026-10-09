@@ -24,7 +24,7 @@
    2. Temporary parameters (id = 0)
    3. Display values
  */
-//Next param id (increase when adding new parameter!): 114
+//Next param id (increase when adding new parameter!): 115
 /*              category     name         unit       min     max     default id */
 #define PARAM_LIST \
     PARAM_ENTRY(CAT_ESP,      allowedspin, "km/h",    0,      50,     10,     5   ) \
@@ -60,6 +60,7 @@
     PARAM_ENTRY(CAT_SHIFTER,  vsx3thresh,  "dig",     0,      4095,   2500,   111 ) \
     PARAM_ENTRY(CAT_SHIFTER,  vsx1fwd,     "dig",     0,      4095,   2000,   112 ) \
     PARAM_ENTRY(CAT_SHIFTER,  vsx1rev,     "dig",     0,      4095,   3300,   113 ) \
+    PARAM_ENTRY(CAT_SHIFTER,  p1thresh,    "dig",     0,      4095,   500,    114 ) \
     VALUE_ENTRY(version,      VERSTR,  2039 ) \
     VALUE_ENTRY(opmode,       OPMODES, 2086 ) \
     VALUE_ENTRY(invmode,      INVMODES,2000 ) \
@@ -96,6 +97,8 @@
     VALUE_ENTRY(potbrake,     "dig",   2075 ) \
     VALUE_ENTRY(brakepressure,"dig",   2074 ) \
     VALUE_ENTRY(vacuum,       "dig",   2018 ) \
+    VALUE_ENTRY(p1,           "dig",   2096 ) \
+    VALUE_ENTRY(gear,         GEARS,   2095 ) \
     VALUE_ENTRY(tmpbat1,      "°C",    2078 ) \
     VALUE_ENTRY(tmpbat2,      "°C",    2088 ) \
     VALUE_ENTRY(tmpbat3,      "°C",    2089 ) \
@@ -126,12 +129,13 @@
     VALUE_ENTRY(fuelpos,      "l",     2094 ) \
     VALUE_ENTRY(cpuload,      "%",     2035 ) \
 
-//Next value Id: 2095
+//Next value Id: 2097
 
 #define VERSTR STRINGIFY(4=VER)
 #define OPMODES      "0=Off, 1=Run, 2=ChargeStart, 3=ConnectorLock, 4=Charge, 5=ChargeStop"
 #define INVMODES     "0=Off, 1=Run, 2=ManualRun, 3=Charge"
 #define DIRS         "0=Neutral, 1=Forward, 2=None, 3=Reverse"
+#define GEARS        "0=B, 16=D, 32=N, 64=R, 128=P"
 #define ONOFF        "0=Off, 1=On, 2=na"
 #define ONOFFFORCE   "0=Off, 1=On, 2=Force"
 #define OKERR        "0=Error, 1=Ok, 2=na"
