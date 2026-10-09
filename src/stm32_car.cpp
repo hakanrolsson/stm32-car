@@ -57,7 +57,6 @@ static LinBus* lin;
 static PiController fuelGaugeController;
 int g_canrun = 0;
 bool g_shifterChanged = false;
-static float g_vehicleSpeedKmh = 0; //from SKID_ECU 0x0B4, real Toyota ABS speed - not the vestigial VAG wheelfl/wheelfr traction control path
 
 //Values of byte 1 in the 0x540 shift lever message
 enum gears
@@ -735,6 +734,7 @@ static void SendDriveModeMessage()
 
 //Replaces the HV ECU's 0x3CA speed message (OEM ~100 ms). Byte 2: speed in km/h
 //(0-255, unsigned magnitude - direction comes from gear, not this message).
+//Speed comes from stm32-sine's motor speed (Param::speed, rpm): km/h = rpm * speedgain / 1000.
 //Byte 4: Toyota checksum = sum(bytes 0..3) + length + both ID bytes.
 static void SendSpeedMessage()
 {
@@ -744,7 +744,8 @@ static void SendSpeedMessage()
       return;
    ctr = 0;
 
-   uint8_t speed = (uint8_t)MIN(255, ABS(g_vehicleSpeedKmh));
+   float kmh = Param::GetFloat(Param::speed) * Param::GetFloat(Param::speedgain) / 1000;
+   uint8_t speed = (uint8_t)MIN(255, ABS(kmh));
 
    uint8_t data[5] = { 0, 0, speed, 0, 0 };
 
@@ -825,6 +826,86 @@ static void SetRevCounter()
    {
       DigIo::oilpres_out.Set();
       Param::SetInt(Param::speedmod, 1000 + regenLevel * 1000 - Param::GetInt(Param::idc) * 10);
+   }
+}
+
+//Frames the engine, battery and HV ECUs send on the real car, replacing the PC replay filter.
+//Payloads are the steady state of candump-bb07d77670-...-power-on-20260802-1600.csv (IG-ON, no
+//engine, not driving). Frames below 0x400 end in a Toyota checksum which is already valid in
+//the captured payloads. 0x120/0x540 (gear) and 0x3CA (speed) are sent elsewhere; 0x520/0x528
+//are engine-running values and left out. Periods are rounded to whole ms.
+struct OemFrame
+{
+   uint16_t id;
+   uint8_t len;
+   uint16_t periodMs;
+   uint8_t data[8];
+};
+
+static const OemFrame oemFrames[] =
+{
+   { 0x038, 7,     9, { 0xC0, 0x00, 0x08, 0x00, 0x00, 0x00, 0x07 } },
+   { 0x039, 4,    10, { 0x2B, 0x00, 0x0E, 0x76 } },
+   { 0x03A, 7,     9, { 0x00, 0x00, 0x00, 0x00, 0x84, 0x01, 0xC6 } },
+   { 0x03B, 5,     8, { 0x00, 0x00, 0x00, 0xD7, 0x17 } },
+   { 0x03E, 3,     9, { 0x19, 0xB8, 0x12 } },
+   { 0x244, 8,    26, { 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x5E } },
+   { 0x348, 6,    43, { 0x00, 0x01, 0x00, 0x00, 0x00, 0x52 } },
+   { 0x3C8, 6,    77, { 0x00, 0x34, 0x00, 0x00, 0x00, 0x05 } },
+   { 0x3C9, 8,   101, { 0x03, 0xFF, 0x05, 0x02, 0x7C, 0x03, 0x00, 0x5C } },
+   { 0x3CB, 7,   101, { 0x69, 0x7C, 0x00, 0x73, 0x19, 0x18, 0x5E } },
+   { 0x3CD, 5,   101, { 0x00, 0x00, 0x00, 0xD6, 0xAB } },
+   { 0x3CF, 5,   154, { 0x10, 0x17, 0x23, 0x00, 0x21 } },
+   { 0x484, 5,  1139, { 0x00, 0x45, 0x00, 0x09, 0x20 } },
+   { 0x4C1, 8,  1019, { 0x01, 0x00, 0x09, 0x01, 0x00, 0x00, 0x00, 0x00 } },
+   { 0x4D0, 8,  1076, { 0x10, 0x00, 0x02, 0x03, 0x00, 0x00, 0x00, 0x00 } },
+   { 0x4D1, 8,  1076, { 0x11, 0x00, 0x01, 0x02, 0x00, 0x00, 0x00, 0x00 } },
+   { 0x526, 3,   587, { 0x24, 0x00, 0x00 } },
+   { 0x527, 3,   968, { 0x24, 0x00, 0x00 } },
+   { 0x529, 7,   842, { 0x28, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00 } },
+   { 0x52C, 2,  1139, { 0x23, 0x57 } },
+   { 0x5B2, 4,  3873, { 0x25, 0x00, 0x04, 0x00 } },
+   { 0x5C8, 3,  1019, { 0x24, 0x00, 0x00 } },
+   { 0x5CC, 3,   303, { 0x24, 0x01, 0x8F } },
+   { 0x5D4, 2,  1139, { 0x23, 0x00 } },
+   { 0x5EC, 7,   523, { 0x28, 0x00, 0x00, 0x00, 0x00, 0x22, 0x3A } },
+   { 0x5F8, 2,  1139, { 0x23, 0x00 } },
+   { 0x602, 2, 20000, { 0x03, 0x00 } },
+};
+
+#define NUM_OEM_FRAMES (sizeof(oemFrames) / sizeof(oemFrames[0]))
+
+static void Ms1Task(void)
+{
+   static uint16_t countdown[NUM_OEM_FRAMES];
+   static bool started = false;
+
+   if (!started)
+   {
+      //Spread the first transmissions over the first period to avoid a burst of 27 frames
+      for (unsigned i = 0; i < NUM_OEM_FRAMES; i++)
+         countdown[i] = 1 + (i * 3) % oemFrames[i].periodMs;
+      started = true;
+   }
+
+   //Send at most one frame per tick so a collision of due frames can't stall the task
+   for (unsigned i = 0; i < NUM_OEM_FRAMES; i++)
+   {
+      if (countdown[i] > 0)
+         countdown[i]--;
+   }
+
+   for (unsigned i = 0; i < NUM_OEM_FRAMES; i++)
+   {
+      if (countdown[i] == 0)
+      {
+         uint8_t data[8];
+         for (int j = 0; j < 8; j++)
+            data[j] = oemFrames[i].data[j];
+         can->Send(oemFrames[i].id, data, oemFrames[i].len);
+         countdown[i] = oemFrames[i].periodMs;
+         break;
+      }
    }
 }
 
@@ -1001,13 +1082,6 @@ static void CanCallback(uint32_t id, uint32_t data[2])
    case 0x420:
       //Param::SetFloat(Param::tmpaux, (((data[0] >> 8) & 0xFF) - 100) / 2.0f);
       break;
-   case 0x0B4: //SKID_ECU VehicleSpeed_B4: byte5:6 signed, 0.009765625 km/h/count
-   {
-      uint8_t* bytes = (uint8_t*)data;
-      int16_t raw = (int16_t)((bytes[5] << 8) | bytes[6]);
-      g_vehicleSpeedKmh = raw * 0.009765625f;
-      break;
-   }
    default:
       LeafBMS::DecodeCAN(id, data, rtc_get_counter_val());
       break;
@@ -1055,8 +1129,6 @@ extern "C" int main(void)
    c.RegisterUserMessage(0x420);
    c.RegisterUserMessage(0x3CB);
    c.RegisterUserMessage(0x030);
-   c.RegisterUserMessage(0x0B4);
-   
 
    can = &c;
    lin = &l;
@@ -1073,6 +1145,7 @@ extern "C" int main(void)
    s.AddTask(Ms10Task, 10);
    s.AddTask(Ms16Task, 16);
    s.AddTask(Ms100Task, 100);
+   s.AddTask(Ms1Task, 1);
 
    Param::SetInt(Param::version, 4); //COM protocol version 4
    Param::SetInt(Param::tmpaux, 87); //sends n/a value to Leaf BMS

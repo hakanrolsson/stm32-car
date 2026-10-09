@@ -61,6 +61,7 @@
     PARAM_ENTRY(CAT_SHIFTER,  vsx1fwd,     "dig",     0,      4095,   2000,   112 ) \
     PARAM_ENTRY(CAT_SHIFTER,  vsx1rev,     "dig",     0,      4095,   3300,   113 ) \
     PARAM_ENTRY(CAT_SHIFTER,  p1thresh,    "dig",     0,      4095,   500,    114 ) \
+    PARAM_ENTRY(CAT_COMM,     speedgain,   "km/h/krpm",0,     100,    6,      115 ) \
     VALUE_ENTRY(version,      VERSTR,  2039 ) \
     VALUE_ENTRY(opmode,       OPMODES, 2086 ) \
     VALUE_ENTRY(invmode,      INVMODES,2000 ) \
